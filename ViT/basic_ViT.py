@@ -1,3 +1,9 @@
+ """
+    Implementation of the basic ViT from Tim Nguyen's blog
+
+    Taken from https://github.com/tintn/vision-transformer-from-scratch/blob/main/vit.py
+    """
+
 import math
 import torch import nn 
 
