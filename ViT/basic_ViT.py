@@ -38,7 +38,7 @@ class PatchEmbedding(nn.Module):
         x = self.projection(x)
         x = x.flatten(2).transpose(1,2)
         return x
-    
+
 
 class AttentionHead(nn.Module):
     """
@@ -98,7 +98,7 @@ class MultiHeadAttention(nn.Module):
         self.output_projection = nn.Linear(self.all_head_size, self.hidden_size)
         self.output_dropout = nn.Dropout(config["hidden_dropout_prob"])
 
-    def forward(self, x, output_attention = False):
+    def forward(self, x, output_attentions = False):
         attention_outputs = [head(x) for head in self.heads]
         #concatenate outputs from the different attention heads
         attention_outputs = torch.cat([attention_output for attention_output, _ in attention_outputs], dim = -1)
@@ -106,7 +106,7 @@ class MultiHeadAttention(nn.Module):
         attention_output = self.output_projection(attention_output)
         attention_output = self.output_dropout(attention_output)
 
-        if not output_attention:
+        if not output_attentions:
             return (attention_output, None)
         else:
             attention_probs = torch.stack([attention_probs for _, attention_provs in attention_outputs], dim = 1)
@@ -179,8 +179,7 @@ class MultiSimplicalAttention(nn.Module):
          self.output_projection = nn.Linear(self.all_head_size, self.hidden_size)
          self.output_dropout = nn.Dropout(config["hidden_dropout_prob"])
     
-    def forward (self, x, output_attention=False):
-
+    def forward (self, x):
         head_outputs = [head(x) for head in self.heads]
         head_outputs = torch.cat(head_outputs, dim=-1)
 
@@ -190,7 +189,74 @@ class MultiSimplicalAttention(nn.Module):
         return (attention_output)
 
     
+class MLP(nn.Module):
+    """
+    MLP Layer
+    """
+    def __init__(self, config):
+        super().__init__()
+        self.dense_1 = nn.Linear(config["hidden_size"], config["intermediate_size"])
+        self.activation = NewGeluActivation()
+        self.dense_2 = nn.Linear(config["intermediate_size"], config["hidden_size"])
+        self.dropout = nn.Dropout(config["hidden_dropout_prob"])
 
+    def forward(self, x):
+        x = self.dense_1(x)
+        x = self.activation(x)
+        x = self.dense_2(x)
+        x = self.dropout(x)
+
+        return x
+    
+class Block(nn.Module):
+    "Single Transformer Block"
+
+    def __init__(self, config):
+        super().__init__()
+        self.use_multiSimplical_attention = config.get("use_multiSimplical_attention", False)
+
+        if self.use_multiSimplical_attention:
+            self.attention = MultiSimplicalAttention(config)
+        else:
+            self.attention = MultiHeadAttention(config)
+        
+        self.layernorm1 = nn.LayerNorm(config["hidden_size"])
+        self.mlp = MLP(config)
+        self.layernorm2 = nn.LayerNorm(config["hidden_size"])
+
+
+    def forward(self, x):
+
+        #Self Attention
+        attention_output = self.attention(self.layernorm1(x))
+
+        #skip connection
+        x = x + attention_output
+
+        #FF Network
+        mlp_output = self.mlp(self.layernorm2(x))
+
+        #Skip Connection
+        x = x + mlp_output
+
+        return (x)
+    
+class Encoder(nn.Module):
+    "Simple Encoder Block, but not saving attention probs"
+    def _init__(self, config):
+        super().__init__()
+
+        self.blocks = nn.ModuleList([])
+        for _ in range(config["num_hidden_layers"]):
+            block = Block(config)
+            self.blocks.append(block)
+
+    def forward(self, x):
+        for block in self.blocks:
+            x = block(x)
+        
+        return x
+    
 
 
 
